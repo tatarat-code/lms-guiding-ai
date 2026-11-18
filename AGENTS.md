@@ -26,6 +26,7 @@
 | `src/library.js` | ライブラリ（一覧・詳細・版の履歴・戻す・削除・書き出し） |
 | `src/run.js` | 独立アプリの配信（`/a/<slug>`）と実行（`/api/run/<slug>`） |
 | `src/logs.js` | 利用ログの CSV |
+| `src/state.js` | 生成アプリの状態の保存（`/api/state/<slug>`。学習の中断と再開） |
 | `src/prompts/` | Gemini に渡す指示書（flow・plan・build・revise）。**教員が編集する場所** |
 | `public/` | 画面（ログイン画面と LMS 画面） |
 | `content/course.json` | 科目名・ステージ1の選択肢など（科目ごとに差し替える） |

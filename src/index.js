@@ -20,6 +20,7 @@ import { handleGenerate, handleRevise } from "./generate.js";
 import { handleList, handleDetail, handleVersions, handleRestore, handleDelete, handleExport } from "./library.js";
 import { serveApp, handleRun } from "./run.js";
 import { handleLogsCsv } from "./logs.js";
+import { handleGetState, handlePutState } from "./state.js";
 
 // ログインなしで見られる画面のファイル
 const PUBLIC_ASSETS = new Set(["/login", "/style.css"]);
@@ -160,6 +161,14 @@ async function routeApi(request, env, path, method) {
   if (run) {
     if (method !== "POST") return error("POST で送ってください。", 405);
     return handleRun(request, env, run[1]);
+  }
+
+  // 独立アプリの状態の保存（中断と再開）
+  const st = path.match(/^\/api\/state\/([^/]+)$/);
+  if (st) {
+    if (method === "GET") return handleGetState(env, st[1]);
+    if (method === "POST" || method === "PUT") return handlePutState(request, env, st[1]);
+    return error("この方法では使えません。", 405);
   }
 
   return error("このアドレスは使われていません。", 404);

@@ -32,6 +32,7 @@ export function validateApp(app) {
   }
 
   if (!html.includes("/api/run/")) reasons.push("AI の呼び出し（/api/run/）が見つかりません。決められた形で AI を呼んでください。");
+  if (!html.includes("/api/state/")) reasons.push("状態の保存（/api/state/）が見つかりません。進み具合・会話の履歴・メモを決められた形でサーバに保存し、中断と再開ができるようにしてください。");
   for (const f of FORBIDDEN) if (f.re.test(html)) reasons.push(f.why);
 
   if (new TextEncoder().encode(html).byteLength > MAX_HTML_BYTES) reasons.push("html が 500KB を超えています。もっと小さくしてください。");

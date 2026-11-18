@@ -52,6 +52,13 @@ const SCHEMA = [
     ts TEXT NOT NULL,
     ok INTEGER NOT NULL
   )`,
+  // 生成アプリの状態（進み具合・会話の履歴・メモ）。アプリ1つにつき1件。
+  // 中断と再開、パソコンとスマートフォンの同期のために、要件定義の表に足したテーブル
+  `CREATE TABLE IF NOT EXISTS app_state (
+    app_id TEXT PRIMARY KEY,
+    state_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_login_attempts_ts ON login_attempts (ts)`,
   `CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs (created_at)`,
 ];
@@ -158,8 +165,34 @@ export async function addVersion(env, app, { system_prompt, html, instruction, t
 export async function deleteApp(env, id) {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM app_versions WHERE app_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM app_state WHERE app_id = ?").bind(id),
     env.DB.prepare("DELETE FROM apps WHERE id = ?").bind(id),
   ]);
+}
+
+// ---------- 生成アプリの状態（中断と再開） ----------
+
+export function getAppIdBySlug(env, slug) {
+  return env.DB.prepare("SELECT id FROM apps WHERE slug = ?").bind(slug).first();
+}
+
+export function getState(env, appId) {
+  return env.DB.prepare("SELECT state_json, updated_at FROM app_state WHERE app_id = ?").bind(appId).first();
+}
+
+export async function putState(env, appId, stateJson) {
+  const now = nowIso();
+  await env.DB.prepare(
+    `INSERT INTO app_state (app_id, state_json, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT (app_id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at`,
+  )
+    .bind(appId, stateJson, now)
+    .run();
+  return now;
+}
+
+export async function clearState(env, appId) {
+  await env.DB.prepare("DELETE FROM app_state WHERE app_id = ?").bind(appId).run();
 }
 
 // 独立アプリの実行の記録
