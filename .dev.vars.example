@@ -1,0 +1,6 @@
+# Gemini の APIキー。授業で配布されたキーを入れます（AIza で始まる文字列）
+GEMINI_API_KEY=
+# LMS にログインするためのパスワード。自分で決めます（12文字以上を推奨）
+APP_PASSWORD=
+# 自分のメールアドレス。Cloudflare Access を有効にしたとき、本人かどうかの照合に使います
+OWNER_EMAIL=

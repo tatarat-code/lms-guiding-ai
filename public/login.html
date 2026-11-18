@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ログイン｜ガイディングAI</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="login-page">
+<main class="login-box">
+  <h1>ガイディングAI</h1>
+  <form id="loginForm">
+    <label for="password">パスワード</label>
+    <input type="password" id="password" name="password" autocomplete="current-password" required autofocus>
+    <button type="submit" class="btn primary" id="loginBtn">ログイン</button>
+    <p class="status err" id="loginMsg" aria-live="polite"></p>
+  </form>
+</main>
+<script>
+(function () {
+  "use strict";
+  const form = document.getElementById("loginForm");
+  const btn = document.getElementById("loginBtn");
+  const msg = document.getElementById("loginMsg");
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    msg.textContent = "";
+    btn.disabled = true;
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: document.getElementById("password").value }),
+      });
+      if (res.ok) { location.href = "/"; return; }
+      if (res.status === 401) { msg.textContent = "パスワードが違います"; return; }
+      let text = "ログインできませんでした（" + res.status + "）。";
+      try { const j = await res.json(); if (j.error) text = j.error; } catch (err) {}
+      msg.textContent = text;
+    } catch (err) {
+      msg.textContent = "通信に失敗しました。ネットワークを確認して、もう一度試してください。";
+    } finally {
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>

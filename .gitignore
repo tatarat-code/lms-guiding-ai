@@ -1,0 +1,20 @@
+# 部品の棚（npm install でいつでも取り寄せ直せる）
+node_modules/
+
+# APIキーやパスワードなどの秘密（絶対に GitHub に送らない）
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# Wrangler が手元で作る作業用ファイル（手元の D1 のデータもここに入る）
+.wrangler/
+
+# 移植元・土台の資料（教員の手元にだけ置く。GitHub には上げない）
+reference/
+
+# OS が作るファイル
+.DS_Store
+Thumbs.db

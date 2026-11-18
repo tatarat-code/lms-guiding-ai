@@ -1,0 +1,32 @@
+{
+  "name": "lms-guiding-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LMS型ガイディングAI：学習目標から自分専用の学習支援AIアプリを生成・改訂・保存・実行する",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.164.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "cloudflare": {
+    "bindings": {
+      "GEMINI_API_KEY": {
+        "description": "授業で配布された **Gemini の APIキー** を貼ります（`AIza` で始まる文字列）。"
+      },
+      "APP_PASSWORD": {
+        "description": "LMS にログインするための **パスワード** を自分で決めて入れます。**12文字以上** を推奨します。"
+      },
+      "OWNER_EMAIL": {
+        "description": "**自分のメールアドレス** を入れます。あとで Cloudflare Access を有効にしたとき、本人かどうかの照合に使います。"
+      },
+      "DB": {
+        "description": "アプリと利用記録を保存するデータベース（D1）です。名前はそのままで構いません。"
+      }
+    }
+  }
+}

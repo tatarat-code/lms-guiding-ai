@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ガイディングAI</title>
+<link rel="stylesheet" href="/style.css">
+<!--
+  LMS の画面です。ログインした人のブラウザにだけ届きます。
+  ※ ここには APIキーやパスワードを絶対に書かないでください。
+  ※ 科目に固有の文言は content/course.json から差し込みます（id="tx-…" の部分）。
+-->
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <h1 id="appTitle">ガイディングAI</h1>
+    <nav class="tabs" role="tablist">
+      <button type="button" role="tab" data-tab="make" class="on">つくる</button>
+      <button type="button" role="tab" data-tab="library">ライブラリ</button>
+      <button type="button" role="tab" data-tab="usage">使用状況</button>
+    </nav>
+    <span class="sp"></span>
+    <button class="btn small" id="btnReset">最初から</button>
+    <button class="btn small" id="btnLogout">ログアウト</button>
+  </div>
+</header>
+
+<main class="wrap">
+<!-- ======================= つくる ======================= -->
+<section class="tabpanel on" id="tab-make" role="tabpanel">
+  <p class="status err" id="bootErr"></p>
+  <div class="steps" id="steps">
+    <div class="step" data-s="1"><b>1 目標の選択</b>何を学びたいか</div>
+    <div class="step" data-s="2"><b>2 プログラム設計</b>AIが学習フローを作る</div>
+    <div class="step" data-s="3"><b>3 フロー表示</b>フローチャートで確認</div>
+    <div class="step" data-s="4"><b>4 学習計画</b>Markdownで確認</div>
+    <div class="step" data-s="5"><b>5 アプリ生成</b>学習支援アプリを作る</div>
+  </div>
+
+  <!-- ================= Stage 1 ================= -->
+  <section class="panel lp" id="p1">
+    <div class="hero">
+      <span class="eyebrow">ステージ1 / 5　　AIは使いません</span>
+      <h2>学習目標を選ぶ</h2>
+      <p class="lead" id="tx-stage1Lead"></p>
+      <ol class="hero-steps">
+        <li><b>1-1</b>理解度</li><li><b>1-2</b>学びたいこと</li><li><b>1-3</b>到達点と時間</li><li><b>1-4</b>補足</li>
+      </ol>
+    </div>
+
+    <div class="lpsec">
+      <div class="lphead">
+        <span class="no">1-1</span>
+        <h3>いま、どこまで理解していますか</h3>
+        <p class="note">章ごとに1つ押します。折れ線が右に寄るほど、学ぶところが多い状態です。小さな字は、その章でつまずきやすい点です。</p>
+      </div>
+      <div class="profile" id="profile">
+        <div class="profile-head"><span></span><span class="scale"><i>分かった</i><i>あいまい</i><i>分からない</i></span></div>
+        <div class="profile-rows" id="chapters"></div>
+        <svg class="profile-line" id="profileLine" aria-hidden="true"></svg>
+      </div>
+      <div class="profile-foot" id="profileFoot"></div>
+    </div>
+
+    <div class="lpsec">
+      <div class="lphead">
+        <span class="no">1-2</span>
+        <h3>とくに学びたいのは何ですか</h3>
+        <p class="note"><span id="tx-maxTools">4</span>つまで選べます。押した順に順位が付き、もう一度押すと外れます。<span class="counter" id="toolCount"></span></p>
+      </div>
+      <div class="toolcats" id="tools"></div>
+    </div>
+
+    <div class="lpsec">
+      <div class="lphead">
+        <span class="no">1-3</span>
+        <h3>どこまでできるようになりたいですか</h3>
+        <p class="note">到達点を1つ選び、使える時間と期限を決めます。</p>
+      </div>
+      <div class="ladder" id="levels"></div>
+      <div class="timebox">
+        <div class="timecol">
+          <b>週あたりに使える時間</b>
+          <div class="hours" id="hoursOpts"></div>
+        </div>
+        <div class="timecol">
+          <b>期限</b>
+          <div class="opts" id="deadlines"></div>
+          <label class="note">日付を自分で決める <input type="date" id="customDate"></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="lpsec">
+      <div class="lphead">
+        <span class="no">1-4</span>
+        <h3>補足（任意）</h3>
+        <p class="note">とくに気になっていること、講義で引っかかった言葉などを一行で。</p>
+      </div>
+      <textarea id="free"></textarea>
+    </div>
+
+    <div class="lpsec final">
+      <div class="lphead"><h3>選んだ内容</h3></div>
+      <div class="summary" id="sum1"></div>
+      <div class="actions">
+        <span class="status" id="st1"></span>
+        <span class="sp"></span>
+        <button class="btn" id="saveGoal">goal.json を保存</button>
+        <button class="btn primary big" id="go2">次へ：学習フローを作る</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Stage 2 ================= -->
+  <section class="panel" id="p2">
+    <div>
+      <h2>ステージ2　学習プログラムを設計する</h2>
+      <p class="lead">ステージ1で選んだ内容を、下にまとめました。この内容とガイドブックのカタログから、AI（Gemini）があなたの学習フロー（どの節を、どの順に読み、どこで確かめるか）を設計します。</p>
+    </div>
+    <div class="goalgfx" id="sum2"></div>
+    <div class="rolebox">
+      <b class="t" id="tx-rolesTitle"></b>
+      <div class="rolegrid">
+        <div class="role ai">
+          <span class="rl" id="tx-rolesAiLabel"></span>
+          <ul id="tx-rolesAiItems"></ul>
+        </div>
+        <div class="role you">
+          <span class="rl" id="tx-rolesYouLabel"></span>
+          <ul id="tx-rolesYouItems"></ul>
+        </div>
+      </div>
+      <p class="note" id="tx-rolesNote"></p>
+    </div>
+    <div class="actions">
+      <span class="status" id="st2"></span>
+      <span class="sp"></span>
+      <button class="btn" id="back1">戻る</button>
+      <button class="btn primary" id="genFlow">学習フローを作る</button>
+    </div>
+  </section>
+
+  <!-- ================= Stage 3 ================= -->
+  <section class="panel" id="p3">
+    <div>
+      <h2>ステージ3　学習フローを確認する</h2>
+      <p class="lead">上から下へ進みます。ひし形は確認問題で、答えられなければ左の矢印で前の節に戻ります。ノードを押すと右に詳しい内容が出ます。</p>
+    </div>
+    <div class="legend">
+      <span><i style="border-radius:999px"></i>現在地／到達点</span>
+      <span><i></i>読む（ガイドブックの節）</span>
+      <span><i style="transform:rotate(45deg);width:11px;height:11px;border-color:var(--warn)"></i>確認問題</span>
+      <span><i style="border-style:double;border-width:3px"></i>自分の問題に当てる（自分で考える）</span>
+    </div>
+    <div class="flowwrap">
+      <div class="flowbox" id="flowbox"></div>
+      <div class="detail" id="detail"><span class="k">ノードの詳細</span><p class="note">ノードを押してください。</p></div>
+    </div>
+    <p class="note" id="flowNote"></p>
+    <p class="note">ドラフト版では、ノードの編集はできません。順番や内容を変えたいときは「作り直す」か、ステージ1に戻って選び直してください。</p>
+    <div class="actions">
+      <span class="status" id="st3"></span>
+      <span class="sp"></span>
+      <button class="btn" id="back2">ステージ1に戻る</button>
+      <button class="btn" id="redoFlow">作り直す</button>
+      <button class="btn" id="saveFlow">flow.json を保存</button>
+      <button class="btn primary" id="go4">次へ：学習計画を作る</button>
+    </div>
+  </section>
+
+  <!-- ================= Stage 4 ================= -->
+  <section class="panel" id="p4">
+    <div>
+      <h2>ステージ4　学習計画を確認する</h2>
+      <p class="lead">学習フローを、そのまま使える計画文（Markdown）にしました。Obsidian・Notion・Cursor・Claude Code のどれで開いても同じに読めます。</p>
+    </div>
+    <div class="row">
+      <button class="btn small" id="viewRender">表示</button>
+      <button class="btn small" id="viewRaw">Markdownの原文</button>
+      <span class="sp"></span>
+      <button class="btn small" id="copyPlan">コピー</button>
+      <button class="btn small" id="savePlan">plan.md を保存</button>
+    </div>
+    <div class="md" id="planView"></div>
+    <textarea class="raw" id="planRaw" style="display:none" readonly></textarea>
+    <div class="callout warn">
+      <b class="t" id="tx-planCalloutTitle"></b>
+      <p id="tx-planCalloutBody"></p>
+    </div>
+    <div class="actions">
+      <span class="status" id="st4"></span>
+      <span class="sp"></span>
+      <button class="btn" id="back3">フローに戻る</button>
+      <button class="btn" id="redoPlan">作り直す</button>
+      <button class="btn primary" id="go5">この計画で進む：アプリを作る</button>
+    </div>
+  </section>
+
+  <!-- ================= Stage 5（この LMS で置き換えた部分） ================= -->
+  <section class="panel" id="p5">
+    <div>
+      <h2>ステージ5　アプリを生成する</h2>
+      <p class="lead">ステージ1〜4の結果から、あなた専用の学習支援アプリを AI（Gemini）が作ります。できたアプリはライブラリに保存され、LMS の中でも、独立したページとしても使えます。</p>
+    </div>
+    <div class="sec">
+      <h3>ここまでの結果</h3>
+      <div class="summary" id="sum5"></div>
+    </div>
+    <div class="sec">
+      <h3>追加の要望（任意）</h3>
+      <p class="note">アプリの形や使い方について希望があれば書きます。なければ空のままで構いません。</p>
+      <textarea id="appRequest" maxlength="2000"></textarea>
+    </div>
+    <div class="callout">
+      <b class="t">ガイドブックの本文について</b>
+      <p>作るアプリには、ガイドブックの全文は入りません。学習ステップに必要な考え方だけを、AIへの指示にまとめて入れます。本文を手元で読みたいときは、次のボタンでダウンロードできます。</p>
+      <div class="row"><a class="btn small" id="dlGuide" href="/api/guidebook" download>ガイドブックをダウンロード（Markdown）</a></div>
+    </div>
+    <div class="actions">
+      <span class="status" id="st5"></span>
+      <span class="sp"></span>
+      <button class="btn" id="back4">計画に戻る</button>
+      <button class="btn" id="saveAll">すべて（goal・flow・plan）を保存</button>
+      <button class="btn primary big" id="genApp">アプリを生成</button>
+    </div>
+  </section>
+
+  <footer id="footer"></footer>
+</section>
+
+<!-- ======================= ライブラリ ======================= -->
+<section class="tabpanel" id="tab-library" role="tabpanel">
+  <!-- 一覧 -->
+  <div id="libList" class="libwrap">
+    <div>
+      <h2>ライブラリ</h2>
+      <p class="lead">生成したアプリです。カードを押すと、プレビュー・作り直し・版の履歴を見られます。</p>
+    </div>
+    <p class="status" id="libStatus"></p>
+    <div class="libgrid" id="libCards"></div>
+  </div>
+
+  <!-- 詳細 -->
+  <div id="libDetail" class="libwrap" hidden>
+    <div class="row"><button class="btn small" id="libBack">← 一覧に戻る</button></div>
+    <div class="dethead">
+      <h2 id="detTitle"></h2>
+      <span class="pill" id="detVer"></span>
+    </div>
+    <p class="lead" id="detDesc"></p>
+    <div class="row">
+      <a class="btn" id="detOpen" target="_blank" rel="noopener">新しいタブで開く</a>
+      <a class="btn" id="detExport">HTMLを書き出す</a>
+      <span class="sp"></span>
+      <button class="btn danger" id="detDelete">削除</button>
+    </div>
+    <div class="detgrid">
+      <div class="preview"><iframe id="detFrame" title="アプリのプレビュー"></iframe></div>
+      <div class="detside">
+        <div class="card detcard">
+          <b>作り直す</b>
+          <p class="note">直したいところを書いて「作り直す」を押すと、新しい版として保存されます。いまの版は履歴に残ります。</p>
+          <textarea id="reviseText" maxlength="2000" placeholder="例：確認問題の答えを採点するとき、ヒントをもう少し短くしてほしい"></textarea>
+          <div class="row"><span class="sp"></span><button class="btn primary" id="reviseBtn">作り直す</button></div>
+          <p class="status" id="reviseStatus"></p>
+        </div>
+        <div class="card detcard">
+          <b>版の履歴</b>
+          <ol class="versions" id="detVersions"></ol>
+          <p class="status" id="verStatus"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 使用状況 ======================= -->
+<section class="tabpanel" id="tab-usage" role="tabpanel">
+  <div class="libwrap">
+    <div>
+      <h2>使用状況</h2>
+      <p class="lead">今日（<span id="usageDay"></span>、日本時間）の使用回数です。上限は日本時間の0時に元に戻ります。</p>
+    </div>
+    <div class="usagegrid">
+      <div class="ustat"><span class="k">生成・改訂</span><b id="useGen">–</b><span class="note">学習フロー・学習計画・アプリの生成・作り直しを、それぞれ1回と数えます。</span><div class="meter"><i id="useGenBar"></i></div></div>
+      <div class="ustat"><span class="k">実行</span><b id="useRun">–</b><span class="note">ライブラリのアプリが AI を呼んだ回数です。</span><div class="meter"><i id="useRunBar"></i></div></div>
+    </div>
+    <div class="card detcard">
+      <b>利用ログ</b>
+      <p class="note" id="logNote"></p>
+      <div class="row"><a class="btn" href="/api/logs.csv" download>利用ログを CSV でダウンロード</a><span class="note">Excel でそのまま開けます。</span></div>
+    </div>
+    <div class="card detcard">
+      <b>Cloudflare Access</b>
+      <p id="accessLabel">確認しています…</p>
+      <p class="note">Access を有効にしたときは、ログインしたメールアドレスが OWNER_EMAIL と一致するかを、毎回確かめます。</p>
+    </div>
+    <div class="row"><span class="sp"></span><button class="btn small" id="usageReload">最新にする</button></div>
+    <p class="status" id="usageStatus"></p>
+  </div>
+</section>
+</main>
+
+<div class="modal" id="copyModal">
+  <div class="box">
+    <h3>自動でコピーできませんでした</h3>
+    <p class="note">下の枠の中は選択されています。Ctrl＋C（Mac は ⌘＋C）でコピーしてください。</p>
+    <textarea class="raw" id="copyArea" style="min-height:260px" readonly></textarea>
+    <div class="row"><span class="sp"></span><button class="btn primary" id="copyClose">閉じる</button></div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

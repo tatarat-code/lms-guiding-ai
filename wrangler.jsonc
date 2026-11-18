@@ -1,0 +1,56 @@
+// Cloudflare Workers の設定ファイル
+// ※ "name" は Worker の名前です。使える文字：半角の英小文字・数字・ハイフン
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lms-guiding-ai",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+
+  // 公開するアドレス：workers.dev と、版ごとのプレビューURL
+  // Cloudflare Access を有効にするときは、この両方を保護すること（README を参照）
+  "workers_dev": true,
+  "preview_urls": true,
+
+  // 画面のファイル（public フォルダ）の設定
+  // run_worker_first: true … すべてのアクセスを、まず src/index.js が受け取ります
+  // （ログインしていない人に画面を見せないため）
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+
+  // content/guidebook.md を、文字列として Worker に取り込む設定
+  // （content/course.json は、そのまま取り込めます）
+  "rules": [
+    { "type": "Text", "globs": ["**/*.md"], "fallthrough": true }
+  ],
+
+  // データベース（D1）。アプリ・版・利用ログを保存します
+  // database_id は書きません。デプロイのときに Cloudflare が自動で作ります
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lms-guiding-ai-db"
+    }
+  ],
+
+  // 公開してもよい設定（変数）
+  // APIキー・パスワード・メールアドレスはここに書かない（Secret に置きます）
+  //   GEMINI_MODEL_BUILD … 学習フロー・学習計画・アプリの生成と作り直しに使うモデル
+  //   GEMINI_MODEL_RUN   … ライブラリのアプリが AI を呼ぶときのモデル
+  //   DAILY_LIMIT_…      … 1日（日本時間の0時区切り）の上限回数
+  //   LOG_CONTENT        … "true" のときだけ、アプリへの入力文と応答文を記録する
+  "vars": {
+    "GEMINI_MODEL_BUILD": "gemini-3.8-flash",
+    "GEMINI_MODEL_RUN": "gemini-3.8-flash",
+    "DAILY_LIMIT_GENERATE": "30",
+    "DAILY_LIMIT_RUN": "300",
+    "LOG_CONTENT": "false"
+  },
+
+  // Cloudflare のダッシュボードで、動作の記録（ログ）を見られるようにする
+  "observability": {
+    "enabled": true
+  }
+}
