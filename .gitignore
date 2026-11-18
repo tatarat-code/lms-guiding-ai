@@ -12,8 +12,9 @@ node_modules/
 # Wrangler が手元で作る作業用ファイル（手元の D1 のデータもここに入る）
 .wrangler/
 
-# 移植元・土台の資料（教員の手元にだけ置く。GitHub には上げない）
+# 移植元・土台の資料と要件定義（教員の手元にだけ置く。GitHub には上げない）
 reference/
+spec-lms.md
 
 # OS が作るファイル
 .DS_Store
