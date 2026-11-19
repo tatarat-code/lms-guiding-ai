@@ -3,10 +3,13 @@
 // ============================================================
 
 import { json, error, readJson } from "./http.js";
+import { parseSettings } from "./settings.js";
+import { fillMissingCodes } from "./code.js";
 import { listApps, getApp, getVersion, listVersions, addVersion, deleteApp } from "./db.js";
 
 // GET /api/apps
 export async function handleList(env) {
+  await fillMissingCodes(env); // コード番号ができる前に作ったアプリに、番号を付ける
   return json({ apps: await listApps(env) });
 }
 
@@ -15,13 +18,14 @@ export async function handleDetail(env, id) {
   const app = await getApp(env, id);
   if (!app) return error("このアプリは見つかりません。", 404);
   const cur = await getVersion(env, id, app.current_version);
-  const { goal_json, flow_json, plan_md, ...rest } = app;
+  const { goal_json, flow_json, plan_md, settings_json, ...rest } = app;
   return json({
     app: {
       ...rest,
       goal: safeParse(goal_json),
       flow: safeParse(flow_json),
       plan: plan_md,
+      settings: parseSettings(settings_json),
       system_prompt: cur ? cur.system_prompt : "",
       html: cur ? cur.html : "",
     },

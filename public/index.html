@@ -18,6 +18,7 @@
     <nav class="tabs" role="tablist">
       <button type="button" role="tab" data-tab="make" class="on">つくる</button>
       <button type="button" role="tab" data-tab="library">ライブラリ</button>
+      <button type="button" role="tab" data-tab="app" id="tabApp" class="apptab" hidden><span class="lbl">アプリ：</span><span id="tabAppName"></span></button>
       <button type="button" role="tab" data-tab="usage">使用状況</button>
     </nav>
     <span class="sp"></span>
@@ -236,15 +237,27 @@
   <div id="libList" class="libwrap">
     <div>
       <h2>ライブラリ</h2>
-      <p class="lead">生成したアプリです。カードを押すと、プレビュー・作り直し・版の履歴を見られます。</p>
+      <p class="lead">生成したアプリです。タイルを押すと、アプリが開きます。</p>
+    </div>
+    <div class="sortbar" id="libSort">
+      <span class="note">並べ替え</span>
+      <button type="button" data-k="default" class="on">標準</button>
+      <button type="button" data-k="title">タイトル</button>
+      <button type="button" data-k="created">作成日</button>
+      <button type="button" data-k="code">コード番号</button>
+      <span class="note" id="libSortNote"></span>
     </div>
     <p class="status" id="libStatus"></p>
     <div class="libgrid" id="libCards"></div>
   </div>
 
-  <!-- 詳細 -->
-  <div id="libDetail" class="libwrap" hidden>
-    <div class="row"><button class="btn small" id="libBack">← 一覧に戻る</button></div>
+</section>
+
+<!-- ======================= アプリ（ライブラリで開いた1件。開いている間だけタブが出る） ======================= -->
+<section class="tabpanel" id="tab-app" role="tabpanel">
+  <div id="libDetail" class="libwrap">
+    <div class="row"><button class="btn small" id="libBack">← ライブラリの一覧へ</button><span class="sp"></span><button class="btn small" id="appClose">このアプリを閉じる</button></div>
+    <span class="eyebrow">アプリ</span>
     <div class="dethead">
       <h2 id="detTitle"></h2>
       <span class="pill" id="detVer"></span>
@@ -253,28 +266,73 @@
     <div class="row">
       <a class="btn" id="detOpen" target="_blank" rel="noopener">新しいタブで開く</a>
       <a class="btn" id="detExport">HTMLを書き出す</a>
+      <button class="btn" id="detSettings">アプリ設定</button>
       <span class="sp"></span>
       <button class="btn danger" id="detDelete">削除</button>
     </div>
     <div class="detgrid">
       <div class="preview"><iframe id="detFrame" title="アプリのプレビュー"></iframe></div>
-      <div class="detside">
+      <!-- 学習分析ダッシュボード -->
+      <div class="detside" id="dash">
         <div class="card detcard">
-          <b>作り直す</b>
-          <p class="note">直したいところを書いて「作り直す」を押すと、新しい版として保存されます。いまの版は履歴に残ります。</p>
-          <textarea id="reviseText" maxlength="2000" placeholder="例：確認問題の答えを採点するとき、ヒントをもう少し短くしてほしい"></textarea>
-          <div class="row"><span class="sp"></span><button class="btn primary" id="reviseBtn">作り直す</button></div>
-          <p class="status" id="reviseStatus"></p>
+          <div class="row"><b>学習の進み具合</b><span class="sp"></span><button class="btn small" id="dashReload">最新にする</button></div>
+          <div class="dashbig"><b id="dashDone">–</b><span id="dashDoneNote"></span></div>
+          <div class="meter"><i id="dashBar"></i></div>
+          <p class="note" id="dashNow"></p>
         </div>
         <div class="card detcard">
-          <b>版の履歴</b>
-          <ol class="versions" id="detVersions"></ol>
-          <p class="status" id="verStatus"></p>
+          <b>ステップごとの達成と理解度の目安</b>
+          <div class="dashlegend">
+            <span>自己評価：<i class="dot known"></i>分かった <i class="dot unsure"></i>あいまい <i class="dot unknown"></i>分からない</span>
+          </div>
+          <ol class="dashsteps" id="dashSteps"></ol>
+          <p class="note">「学習前」はステージ1で選んだ理解度、「学習後」はステップを完了したときの自己評価です。「確認問題」は AI の採点による目安で、誤ることがあります。</p>
         </div>
+        <div class="card detcard">
+          <b>利用の記録</b>
+          <div class="dashusage" id="dashUsage"></div>
+        </div>
+        <p class="status" id="dashStatus"></p>
       </div>
     </div>
   </div>
 </section>
+
+<!-- アプリ設定の窓 -->
+<div class="modal" id="settingsModal">
+  <div class="box setbox">
+    <div class="row"><h3>アプリ設定</h3><span class="sp"></span><button class="btn small" id="setClose">閉じる</button></div>
+
+    <div class="setsec">
+      <b>文字の大きさ</b>
+      <div class="segs" id="setFont">
+        <button type="button" data-v="small">小</button><button type="button" data-v="normal">標準</button><button type="button" data-v="large">大</button><button type="button" data-v="xlarge">特大</button>
+      </div>
+      <b>AI の返事の長さ</b>
+      <div class="segs" id="setLength">
+        <button type="button" data-v="short">短め</button><button type="button" data-v="normal">標準</button><button type="button" data-v="long">詳しめ</button>
+      </div>
+      <p class="note">選ぶとすぐに保存され、パソコンでもスマートフォンでも同じ設定になります。文字の大きさが変わらないアプリは、下の「更新する」で対応します。</p>
+      <p class="status" id="setStatus"></p>
+    </div>
+
+    <details class="setsec" id="setAdvanced">
+      <summary>詳細（アプリの更新・版の履歴）</summary>
+      <div class="setsub">
+        <b>アプリを更新する</b>
+        <p class="note">アプリを、最新の決まり（中断と再開、学習の記録、文字の大きさなど）に合わせて作り直し、新しい版として保存します。変えたいところがあれば、下に書きます（空のままでも更新できます）。30〜90秒かかり、生成の回数を1回使います。学習の記録は残ります。</p>
+        <textarea id="reviseText" maxlength="2000" placeholder="（任意）例：確認問題のヒントを、もう少し短くしてほしい"></textarea>
+        <div class="row"><span class="sp"></span><button class="btn" id="reviseCancel">更新しない</button><button class="btn primary" id="reviseBtn">更新する</button></div>
+        <p class="status" id="reviseStatus"></p>
+      </div>
+      <div class="setsub">
+        <b>版の履歴</b>
+        <ol class="versions" id="detVersions"></ol>
+        <p class="status" id="verStatus"></p>
+      </div>
+    </details>
+  </div>
+</div>
 
 <!-- ======================= 使用状況 ======================= -->
 <section class="tabpanel" id="tab-usage" role="tabpanel">

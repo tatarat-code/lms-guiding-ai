@@ -16,9 +16,11 @@ export const APP_RULES = `## 生成アプリの決まり（必ず守る）
    const res = await fetch('/api/run/' + window.LMS_APP.slug, {
      method: 'POST',
      headers: { 'Content-Type': 'application/json' },
-     body: JSON.stringify({ input, history })   // history: [{role:'user'|'model', text}]
+     body: JSON.stringify({ input, history, step })   // history: [{role:'user'|'model', text}]、step: いまのステップの番号（整数）
    });
-   const { text } = await res.json();
+   const { text, check } = await res.json();
+   - step は必ず送る（どのステップのやりとりかを、学習の記録に残すため）。
+   - check は、その返事が確認問題の採点だったかどうか（"pass"＝十分、"retry"＝もう一度、"none"＝採点ではない）。"pass" のときは「完了にして次へ」を目立たせてよい。check の値を理由にステップを勝手に進めたり、止めたりはしない。
    - window.LMS_APP はサーバが配信時に差し込むので、HTML 側で定義しない（window.LMS_APP = … を書かない）。
    - input は4,000字まで。history は、それまでのやりとり（古い順）で、直近20件までが使われる。
    - 応答が失敗しても text に日本語のメッセージが入って返るので、それをそのまま表示してよい。通信そのものが失敗したときは「通信に失敗しました」と表示する。
@@ -36,13 +38,28 @@ export const APP_RULES = `## 生成アプリの決まり（必ず守る）
      headers: { 'Content-Type': 'application/json' },
      body: JSON.stringify({ state })   // state は JSON のオブジェクト。{ state: null } で消える
    });
-   - state には、いまのステップの番号、完了したステップ、ステップごとの会話の履歴、メモ欄の内容、中断した日時、steps の区切りが分かる情報（ステップ数とタイトルの一覧など）を入れる。
+   - state には、進み具合（下の progress）、ステップごとの会話の履歴、メモ欄の内容、中断した日時、steps の区切りが分かる情報（ステップ数とタイトルの一覧など）を入れる。
+   - 進み具合は、必ず次の形で state.progress に入れる（LMS の学習分析がこの形を読む。名前と値を変えない）。
+     progress: {
+       current: 2,                                   // いまのステップの番号
+       steps: [                                      // steps のすべてを、番号の順に
+         { no: 1, status: "done",  self: "known" },  // status: "done"＝完了 / "doing"＝いま取り組んでいる / "todo"＝まだ
+         { no: 2, status: "doing", self: null },     // self: 完了したときの自己評価。"known"＝分かった / "unsure"＝あいまい / "unknown"＝分からない / まだなら null
+         { no: 3, status: "todo",  self: null }
+       ]
+     }
+   - 自己評価：kind が read のステップで「完了にして次へ」を押したとき、「このステップの内容は、どのくらい分かりましたか」と尋ね、「分かった」「あいまい」「分からない」の3つから選んでもらってから次へ進む。選んだ値を、そのステップの self に入れる。kind が apply のステップでは尋ねない（self は null のまま）。「あいまい」「分からない」を選んでも次へ進める（戻る節を一言案内する）。
    - state は 200KB まで。大きくなりそうなときは、各ステップの会話の古い分から減らす。
    - 保存する時機：メッセージを送って返事が来たとき、ステップを進めたとき、メモを書いたとき（入力のたびではなく、少し間をおいて）、「学習を一時中断する」を押したとき。
    - 画面の上部（進み具合の表示の近く）に「学習を一時中断する」ボタンを置く。押したら保存し、「中断しました。このページを閉じても、次に開いたときに続きから再開できます」と表示する。保存に失敗したら、その旨を表示する。
    - アプリを開いたとき、保存があれば、中断した日時とステップを示して「中断した箇所から学習を再開する」と「最初からやり直す」のボタンを出す。再開を選んだら、会話の履歴とメモを画面に戻す。やり直しを選んだら、確認してから { state: null } を送って消す。
    - 保存してある state の steps の区切りが、いまのアプリの steps と合わないとき（作り直しでステップが変わったとき）は、その旨を示して「最初からやり直す」を勧める。
-   - 読み込みや保存の通信が失敗しても、アプリは使い続けられるようにする（「保存できませんでした」と小さく表示する）。`;
+   - 読み込みや保存の通信が失敗しても、アプリは使い続けられるようにする（「保存できませんでした」と小さく表示する）。
+8. 文字の大きさは、学習者が LMS の「アプリ設定」で変える。サーバが html 要素の font-size を設定に合わせて差し込むので、次を守る。
+   - html 要素（:root）の font-size を、HTML 側で指定しない。
+   - 文字の大きさ（font-size）は、すべて rem で書く（例：本文 1rem、小さい字 0.85rem、見出し 1.25rem）。px では書かない。
+   - 文字に合わせて広がるべき余白や高さ（ボタン、入力欄、吹き出しの内側の余白など）も rem で書く。
+   - 文字が大きくなっても、横にはみ出したり、入力欄や送信ボタンが画面の外に出たりしないレイアウトにする。`;
 
 export function buildSystemPrompt(course) {
   const c = course.course;

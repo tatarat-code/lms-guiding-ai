@@ -16,6 +16,7 @@ import { callGemini, GeminiError, stripFence } from "./gemini.js";
 import { useQuota, LIMIT_MESSAGE } from "./limits.js";
 import { validateApp } from "./validate.js";
 import { createApp, getApp, getVersion, addVersion } from "./db.js";
+import { nextCode } from "./code.js";
 import { buildSystemPrompt, buildUserPrompt } from "./prompts/build.js";
 import { reviseSystemPrompt, reviseUserPrompt } from "./prompts/revise.js";
 
@@ -129,16 +130,17 @@ export async function handleGenerate(request, env) {
   }
   if (result.reasons) return rejected(result.reasons);
 
-  const saved = await createApp(env, { ...result.app, goal: body.goal, flow: body.flow, plan: body.plan });
+  const code = await nextCode(env, body.flow);
+  const saved = await createApp(env, { ...result.app, goal: body.goal, flow: body.flow, plan: body.plan, code });
   return json({ app: saved });
 }
 
 // POST /api/apps/:id/revise {instruction}
 export async function handleRevise(request, env, id) {
   const body = await readBody(request);
+  // 指示は空でもよい（空のときは、中身を変えずに最新の決まりに合わせるだけ）
   const instruction = typeof body?.instruction === "string" ? body.instruction.trim() : "";
-  if (!instruction) return error("作り直しの指示を書いてください。", 400);
-  if (instruction.length > MAX_REQUEST_CHARS) return error(`作り直しの指示は ${MAX_REQUEST_CHARS} 字以内にしてください。`, 400);
+  if (instruction.length > MAX_REQUEST_CHARS) return error(`更新の指示は ${MAX_REQUEST_CHARS} 字以内にしてください。`, 400);
 
   const app = await getApp(env, id);
   if (!app) return error("このアプリは見つかりません。", 404);
@@ -158,6 +160,6 @@ export async function handleRevise(request, env, id) {
   }
   if (result.reasons) return rejected(result.reasons);
 
-  const saved = await addVersion(env, app, { ...result.app, instruction });
+  const saved = await addVersion(env, app, { ...result.app, instruction: instruction || "最新の決まりに合わせて更新" });
   return json({ app: saved });
 }

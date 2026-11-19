@@ -19,7 +19,9 @@ const SCHEMA = [
     plan_md TEXT,
     current_version INTEGER NOT NULL,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    settings_json TEXT,
+    code TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS app_versions (
     app_id TEXT NOT NULL,
@@ -40,7 +42,9 @@ const SCHEMA = [
     ok INTEGER NOT NULL,
     input_text TEXT,
     output_text TEXT,
-    version INTEGER
+    version INTEGER,
+    step INTEGER,
+    verdict TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS usage_daily (
     day TEXT NOT NULL,
@@ -57,17 +61,32 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS app_state (
     app_id TEXT PRIMARY KEY,
     state_json TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    progress_done INTEGER,
+    progress_total INTEGER
   )`,
   `CREATE INDEX IF NOT EXISTS idx_login_attempts_ts ON login_attempts (ts)`,
   `CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs (created_at)`,
 ];
 
-// runs.version（CSV の version 列のため、要件定義の表に足した列）が無い古いテーブルに、列を足す
+// 要件定義の表に、あとから足した列。古いテーブルに無ければ足す
+//   runs.version        … CSV の version 列のため
+//   runs.step / verdict … 学習分析（どのステップの、確認問題の採点結果か）
+//   apps.settings_json  … アプリ設定（文字の大きさ・返事の長さ）
+const ADDED_COLUMNS = {
+  runs: [["version", "INTEGER"], ["step", "INTEGER"], ["verdict", "TEXT"]],
+  apps: [["settings_json", "TEXT"], ["code", "TEXT"]],
+  app_state: [["progress_done", "INTEGER"], ["progress_total", "INTEGER"]],
+};
+//   apps.code                        … コード番号（学習ジャンル＋連番。src/code.js）
+//   app_state.progress_done / _total … ライブラリの一覧に出す進み具合（保存のたびに state から写す）
 async function addMissingColumns(env) {
-  const { results } = await env.DB.prepare("PRAGMA table_info(runs)").all();
-  if (!(results || []).some((c) => c.name === "version")) {
-    await env.DB.prepare("ALTER TABLE runs ADD COLUMN version INTEGER").run();
+  for (const [table, cols] of Object.entries(ADDED_COLUMNS)) {
+    const { results } = await env.DB.prepare(`PRAGMA table_info(${table})`).all();
+    const have = new Set((results || []).map((c) => c.name));
+    for (const [name, type] of cols) {
+      if (!have.has(name)) await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`).run();
+    }
   }
 }
 
@@ -77,13 +96,37 @@ async function addMissingColumns(env) {
 
 const APP_COLUMNS = "id, slug, title, description, current_version, created_at, updated_at";
 
+// 一覧（進み具合と、最後に使った日時を添える）
 export async function listApps(env) {
-  const { results } = await env.DB.prepare(`SELECT ${APP_COLUMNS} FROM apps ORDER BY updated_at DESC`).all();
+  const { results } = await env.DB.prepare(
+    `SELECT a.id, a.slug, a.title, a.description, a.current_version, a.created_at, a.updated_at, a.code,
+            s.progress_done, s.progress_total,
+            (SELECT MAX(r.created_at) FROM runs r WHERE r.app_id = a.id AND r.ok = 1) AS last_run_at
+     FROM apps a LEFT JOIN app_state s ON s.app_id = a.id
+     ORDER BY a.updated_at DESC`,
+  ).all();
   return results || [];
 }
 
+// ---------- コード番号 ----------
+
+export async function listCodes(env) {
+  const { results } = await env.DB.prepare("SELECT code FROM apps WHERE code IS NOT NULL").all();
+  return (results || []).map((r) => r.code);
+}
+
+// コード番号がまだ無いアプリ（古い順）
+export async function listAppsWithoutCode(env) {
+  const { results } = await env.DB.prepare("SELECT id, flow_json FROM apps WHERE code IS NULL ORDER BY created_at").all();
+  return results || [];
+}
+
+export async function setCode(env, id, code) {
+  await env.DB.prepare("UPDATE apps SET code = ? WHERE id = ?").bind(code, id).run();
+}
+
 export function getApp(env, id) {
-  return env.DB.prepare(`SELECT ${APP_COLUMNS}, goal_json, flow_json, plan_md FROM apps WHERE id = ?`).bind(id).first();
+  return env.DB.prepare(`SELECT ${APP_COLUMNS}, goal_json, flow_json, plan_md, settings_json FROM apps WHERE id = ?`).bind(id).first();
 }
 
 export function getVersion(env, appId, version) {
@@ -95,7 +138,7 @@ export function getVersion(env, appId, version) {
 // slug から、現在の版を引く
 export function getCurrentBySlug(env, slug) {
   return env.DB.prepare(
-    `SELECT a.id, a.slug, a.title, a.current_version, v.system_prompt, v.html
+    `SELECT a.id, a.slug, a.title, a.current_version, a.settings_json, v.system_prompt, v.html
      FROM apps a JOIN app_versions v ON v.app_id = a.id AND v.version = a.current_version
      WHERE a.slug = ?`,
   )
@@ -120,7 +163,7 @@ function randomSlug() {
 }
 
 // 新しいアプリを版1として保存する
-export async function createApp(env, { title, description, goal, flow, plan, system_prompt, html }) {
+export async function createApp(env, { title, description, goal, flow, plan, system_prompt, html, code }) {
   const id = crypto.randomUUID();
   const now = nowIso();
   for (let i = 0; i < 5; i++) {
@@ -128,9 +171,9 @@ export async function createApp(env, { title, description, goal, flow, plan, sys
     try {
       await env.DB.batch([
         env.DB.prepare(
-          `INSERT INTO apps (id, slug, title, description, goal_json, flow_json, plan_md, current_version, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-        ).bind(id, slug, title, description, JSON.stringify(goal), JSON.stringify(flow), plan, now, now),
+          `INSERT INTO apps (id, slug, title, description, goal_json, flow_json, plan_md, current_version, created_at, updated_at, code)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+        ).bind(id, slug, title, description, JSON.stringify(goal), JSON.stringify(flow), plan, now, now, code ?? null),
         env.DB.prepare(
           "INSERT INTO app_versions (app_id, version, system_prompt, html, instruction, created_at) VALUES (?, 1, ?, ?, NULL, ?)",
         ).bind(id, system_prompt, html, now),
@@ -180,13 +223,14 @@ export function getState(env, appId) {
   return env.DB.prepare("SELECT state_json, updated_at FROM app_state WHERE app_id = ?").bind(appId).first();
 }
 
-export async function putState(env, appId, stateJson) {
+export async function putState(env, appId, stateJson, done = null, total = null) {
   const now = nowIso();
   await env.DB.prepare(
-    `INSERT INTO app_state (app_id, state_json, updated_at) VALUES (?, ?, ?)
-     ON CONFLICT (app_id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at`,
+    `INSERT INTO app_state (app_id, state_json, updated_at, progress_done, progress_total) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (app_id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at,
+       progress_done = excluded.progress_done, progress_total = excluded.progress_total`,
   )
-    .bind(appId, stateJson, now)
+    .bind(appId, stateJson, now, done, total)
     .run();
   return now;
 }
@@ -195,14 +239,30 @@ export async function clearState(env, appId) {
   await env.DB.prepare("DELETE FROM app_state WHERE app_id = ?").bind(appId).run();
 }
 
+// ---------- アプリ設定 ----------
+
+export async function saveSettings(env, appId, settings) {
+  await env.DB.prepare("UPDATE apps SET settings_json = ? WHERE id = ?").bind(JSON.stringify(settings), appId).run();
+}
+
 // 独立アプリの実行の記録
-export async function logRun(env, { appId, version, inputChars, outputChars, latencyMs, ok, inputText, outputText }) {
+export async function logRun(env, { appId, version, step, verdict, inputChars, outputChars, latencyMs, ok, inputText, outputText }) {
   await env.DB.prepare(
-    `INSERT INTO runs (app_id, version, created_at, input_chars, output_chars, latency_ms, ok, input_text, output_text)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO runs (app_id, version, step, verdict, created_at, input_chars, output_chars, latency_ms, ok, input_text, output_text)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(appId, version ?? null, nowIso(), inputChars, outputChars, latencyMs, ok ? 1 : 0, inputText ?? null, outputText ?? null)
+    .bind(appId, version ?? null, step ?? null, verdict ?? null, nowIso(), inputChars, outputChars, latencyMs, ok ? 1 : 0, inputText ?? null, outputText ?? null)
     .run();
+}
+
+// 学習分析のための、1つのアプリの実行の記録（古い順）
+export async function listRunsForApp(env, appId, limit = 5000) {
+  const { results } = await env.DB.prepare(
+    "SELECT created_at, step, verdict, ok FROM runs WHERE app_id = ? ORDER BY id LIMIT ?",
+  )
+    .bind(appId, limit)
+    .all();
+  return results || [];
 }
 
 // 利用ログ（新しい順）。削除したアプリの記録も残る（題名は空になる）

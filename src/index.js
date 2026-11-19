@@ -21,6 +21,8 @@ import { handleList, handleDetail, handleVersions, handleRestore, handleDelete, 
 import { serveApp, handleRun } from "./run.js";
 import { handleLogsCsv } from "./logs.js";
 import { handleGetState, handlePutState } from "./state.js";
+import { handleSaveSettings } from "./settings.js";
+import { handleDashboard } from "./dashboard.js";
 
 // ログインなしで見られる画面のファイル
 const PUBLIC_ASSETS = new Set(["/login", "/style.css"]);
@@ -143,7 +145,7 @@ async function routeApi(request, env, path, method) {
 
   // ライブラリ
   if (path === "/api/apps" && method === "GET") return handleList(env);
-  const m = path.match(/^\/api\/apps\/([0-9a-f-]{36})(\/(versions|revise|restore|export))?$/);
+  const m = path.match(/^\/api\/apps\/([0-9a-f-]{36})(\/(versions|revise|restore|export|settings|dashboard))?$/);
   if (m) {
     const id = m[1];
     const sub = m[3] || "";
@@ -153,6 +155,8 @@ async function routeApi(request, env, path, method) {
     if (sub === "export" && method === "GET") return handleExport(env, id);
     if (sub === "revise" && method === "POST") return handleRevise(request, env, id);
     if (sub === "restore" && method === "POST") return handleRestore(request, env, id);
+    if (sub === "settings" && method === "POST") return handleSaveSettings(request, env, id);
+    if (sub === "dashboard" && method === "GET") return handleDashboard(env, id);
     return error("この方法では使えません。", 405);
   }
 

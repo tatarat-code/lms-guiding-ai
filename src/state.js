@@ -14,6 +14,7 @@
 import { json, error } from "./http.js";
 import { getAppIdBySlug, getState, putState, clearState } from "./db.js";
 import { SLUG_RE } from "./run.js";
+import { normalizeProgress } from "./dashboard.js";
 
 const MAX_STATE_BYTES = 200 * 1024; // 200KB
 
@@ -61,6 +62,9 @@ export async function handlePutState(request, env, slug) {
   if (new TextEncoder().encode(stateJson).byteLength > MAX_STATE_BYTES) {
     return error("保存する内容が大きすぎます（200KB まで）。古い会話の履歴を減らしてください。", 413);
   }
-  const updated_at = await putState(env, app.id, stateJson);
+  // ライブラリの一覧に出す進み具合（完了したステップ数 / ステップ数）を、一緒に控えておく
+  const prog = normalizeProgress(body.state);
+  const done = prog ? prog.steps.filter((s) => s.status === "done").length : null;
+  const updated_at = await putState(env, app.id, stateJson, done, prog ? prog.steps.length : null);
   return json({ ok: true, updated_at });
 }

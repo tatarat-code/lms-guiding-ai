@@ -37,8 +37,9 @@ function showTab(name) {
   $("#btnReset").style.display = name === "make" ? "" : "none";
   try { sessionStorage.setItem(TAB_KEY, name); } catch (e) {}
   if (name === "make" && S && S.stage === 1) requestAnimationFrame(drawProfileLine);
-  if (name === "library" && $("#libDetail").hidden) loadLibrary();
+  if (name === "library") return loadLibrary();
   if (name === "usage") loadUsage();
+  if (name === "app") loadDash();
 }
 
 /* 時間のかかる処理の進行表示（経過秒数を出す） */
@@ -61,44 +62,106 @@ function setErr(el, msg) { el.className = "status err"; el.textContent = msg; }
 let current = null;  // 開いているアプリ
 const OPEN_KEY = "lms-open-app";
 
+let libApps = [];  // 一覧（サーバから届いた順＝標準の順：更新が新しい順）
+const SORT_KEY = "lms-lib-sort";
+let libSort = { key: "default", desc: false };
+try { const s = JSON.parse(localStorage.getItem(SORT_KEY) || "null"); if (s && ["default", "title", "created", "code"].includes(s.key)) libSort = { key: s.key, desc: !!s.desc }; } catch (e) {}
+
+function fmtDate(iso) {
+  const d = new Date(iso); if (isNaN(d)) return "–";
+  const p = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + "/" + p(d.getMonth() + 1) + "/" + p(d.getDate());
+}
+// コード番号「II-003」→ 部の記号と連番
+function codeParts(code) { const s = String(code || ""), i = s.lastIndexOf("-"); return i > 0 ? { key: s.slice(0, i), seq: Number(s.slice(i + 1)) || 0 } : { key: "", seq: 0 }; }
+function partOf(code) { const k = codeParts(code).key; return (PARTS || []).find((p) => p.key === k) || null; }
+function partIndex(code) { const k = codeParts(code).key, i = (PARTS || []).findIndex((p) => p.key === k); return i < 0 ? 999 : i; }
+
+function sortedApps() {
+  const a = libApps.slice(), k = libSort.key;
+  if (k === "title") a.sort((x, y) => x.title.localeCompare(y.title, "ja"));
+  else if (k === "created") a.sort((x, y) => (x.created_at < y.created_at ? -1 : x.created_at > y.created_at ? 1 : 0));
+  else if (k === "code") a.sort((x, y) => partIndex(x.code) - partIndex(y.code) || codeParts(x.code).seq - codeParts(y.code).seq);
+  if (k !== "default" && libSort.desc) a.reverse();
+  return a;
+}
+function renderLibrary() {
+  $$("#libSort button").forEach((b) => {
+    const on = b.dataset.k === libSort.key;
+    b.classList.toggle("on", on);
+    b.textContent = b.textContent.replace(/ [▲▼]$/, "") + (on && libSort.key !== "default" ? (libSort.desc ? " ▼" : " ▲") : "");
+  });
+  $("#libSortNote").textContent = libSort.key === "default" ? "更新が新しい順" : "同じボタンをもう一度押すと、逆順になります";
+  const box = $("#libCards"); box.innerHTML = "";
+  if (!libApps.length) { box.innerHTML = '<div class="empty">まだアプリがありません。「つくる」タブでステージ5まで進み、「アプリを生成」を押してください。</div>'; return; }
+  for (const a of sortedApps()) {
+    const part = partOf(a.code);
+    const has = Number.isInteger(a.progress_total) && a.progress_total > 0;
+    const pct = has ? Math.round(a.progress_done / a.progress_total * 100) : 0;
+    const b = document.createElement("button"); b.type = "button"; b.className = "apptile";
+    if (part) b.style.setProperty("--pc", part.color);
+    b.title = a.description || a.title;
+    b.innerHTML = '<span class="code"></span><span class="genre"></span><span class="t"></span>'
+      + '<span class="meta">作成日 <b class="cd"></b></span>'
+      + '<span class="mini"><span class="pg"></span><span class="meter"><i style="width:' + pct + '%"></i></span><span class="last"></span></span>';
+    b.querySelector(".code").textContent = a.code || "–";
+    b.querySelector(".genre").textContent = part ? part.name : "";
+    b.querySelector(".t").textContent = a.title;
+    b.querySelector(".cd").textContent = fmtDate(a.created_at);
+    b.querySelector(".pg").textContent = has ? "進捗 " + a.progress_done + " / " + a.progress_total + "（" + pct + "%）" : "進捗 –";
+    b.querySelector(".last").textContent = "前回 " + (a.last_run_at ? fmtDate(a.last_run_at) : "まだ");
+    b.onclick = () => openApp(a.id);
+    box.appendChild(b);
+  }
+}
+$$("#libSort button").forEach((b) => (b.onclick = () => {
+  const k = b.dataset.k;
+  libSort = { key: k, desc: k !== "default" && libSort.key === k ? !libSort.desc : false };
+  try { localStorage.setItem(SORT_KEY, JSON.stringify(libSort)); } catch (e) {}
+  renderLibrary();
+}));
+
 async function loadLibrary() {
-  $("#libList").hidden = false; $("#libDetail").hidden = true;
-  try { sessionStorage.removeItem(OPEN_KEY); } catch (e) {}
   $("#libStatus").className = "status"; $("#libStatus").textContent = "読み込んでいます…";
   try {
     const { apps } = await api("/api/apps");
     $("#libStatus").textContent = "";
-    const box = $("#libCards"); box.innerHTML = "";
-    if (!apps.length) { box.innerHTML = '<div class="empty">まだアプリがありません。「つくる」タブでステージ5まで進み、「アプリを生成」を押してください。</div>'; return; }
-    for (const a of apps) {
-      const b = document.createElement("button"); b.type = "button"; b.className = "appcard";
-      b.innerHTML = `<span class="t"></span><span class="d"></span><span class="m"></span>`;
-      b.querySelector(".t").textContent = a.title;
-      b.querySelector(".d").textContent = a.description || "";
-      b.querySelector(".m").textContent = "版" + a.current_version + "　更新 " + fmtTime(a.updated_at);
-      b.onclick = () => openApp(a.id);
-      box.appendChild(b);
-    }
+    libApps = apps; renderLibrary();
   } catch (e) { setErr($("#libStatus"), "一覧を読み込めませんでした：" + e.message); }
 }
 
-async function openApp(id) {
-  $("#libList").hidden = true; $("#libDetail").hidden = false;
-  showTab("library");
+// アプリを開く。上部に「アプリ：〈名前〉」のタブを出す（show が false なら、タブを出すだけで切り替えない）
+async function openApp(id, show = true) {
+  $("#tabApp").hidden = false;
+  if (!current || current.id !== id) { $("#tabAppName").textContent = "…"; $("#detTitle").textContent = "読み込んでいます…"; }
+  if (show) showTab("app");
   $("#reviseStatus").textContent = ""; $("#verStatus").textContent = "";
   try { sessionStorage.setItem(OPEN_KEY, id); } catch (e) {}
   try {
     const [{ app }, vs] = await Promise.all([api("/api/apps/" + id), api("/api/apps/" + id + "/versions")]);
     current = app;
     $("#detTitle").textContent = app.title;
+    $("#tabAppName").textContent = app.title; $("#tabApp").title = app.title;
     $("#detVer").textContent = "版" + app.current_version;
     $("#detDesc").textContent = app.description || "";
     $("#detOpen").href = "/a/" + app.slug;
     $("#detExport").href = "/api/apps/" + app.id + "/export";
     $("#detFrame").src = "/a/" + app.slug + "?v=" + app.current_version;
     renderVersions(vs);
-    window.scrollTo({ top: 0 });
-  } catch (e) { loadLibrary().then(() => setErr($("#libStatus"), "アプリを開けませんでした：" + e.message)); }
+    paintSettings();
+    loadDash();
+    if (show) window.scrollTo({ top: 0 });
+  } catch (e) {
+    const shown = $("#tab-app").classList.contains("on");
+    closeApp();
+    if (shown) showTab("library").then(() => setErr($("#libStatus"), "アプリを開けませんでした：" + e.message));
+  }
+}
+// アプリを閉じる（タブを消す）
+function closeApp() {
+  current = null; $("#detFrame").src = "about:blank"; $("#tabApp").hidden = true;
+  $("#settingsModal").classList.remove("on");
+  try { sessionStorage.removeItem(OPEN_KEY); } catch (e) {}
 }
 
 function renderVersions({ current_version, versions }) {
@@ -128,26 +191,120 @@ async function restoreVersion(v) {
 
 $("#reviseBtn").onclick = async () => {
   if (!current) return;
-  const instruction = $("#reviseText").value.trim();
-  if (!instruction) { setErr($("#reviseStatus"), "直したいところを書いてください。"); return; }
-  $("#reviseBtn").disabled = true;
-  const stop = progress($("#reviseStatus"), "作り直しています。30〜90秒かかることがあります");
+  const instruction = $("#reviseText").value.trim();  // 空でもよい（最新の決まりに合わせるだけ）
+  $("#reviseBtn").disabled = true; $("#reviseCancel").disabled = true;
+  const stop = progress($("#reviseStatus"), "更新しています。30〜90秒かかることがあります。この窓を閉じずにお待ちください");
   try {
     await api("/api/apps/" + current.id + "/revise", { instruction });
     stop(); $("#reviseText").value = "";
     await openApp(current.id);
-    $("#reviseStatus").className = "status"; $("#reviseStatus").textContent = "新しい版を保存しました。";
-  } catch (e) { stop(); setErr($("#reviseStatus"), "作り直せませんでした：" + e.message); }
-  finally { $("#reviseBtn").disabled = false; }
+    $("#reviseStatus").className = "status"; $("#reviseStatus").textContent = "更新して、新しい版を保存しました。";
+  } catch (e) { stop(); setErr($("#reviseStatus"), "更新できませんでした：" + e.message); }
+  finally { $("#reviseBtn").disabled = false; $("#reviseCancel").disabled = false; }
 };
+// 更新しない：書きかけの指示を消して、設定の窓を閉じる
+$("#reviseCancel").onclick = () => { $("#reviseText").value = ""; $("#reviseStatus").textContent = ""; $("#setAdvanced").open = false; $("#settingsModal").classList.remove("on"); };
+
+/* ---------------- アプリ設定 ---------------- */
+function paintSettings() {
+  if (!current) return;
+  const s = current.settings || { font: "normal", length: "normal" };
+  $$("#setFont button").forEach((b) => b.classList.toggle("on", b.dataset.v === s.font));
+  $$("#setLength button").forEach((b) => b.classList.toggle("on", b.dataset.v === s.length));
+}
+async function saveSetting(key, value) {
+  if (!current) return;
+  const next = Object.assign({ font: "normal", length: "normal" }, current.settings, { [key]: value });
+  $("#setStatus").className = "status"; $("#setStatus").textContent = "保存しています…";
+  try {
+    const { settings } = await api("/api/apps/" + current.id + "/settings", next);
+    current.settings = settings; paintSettings();
+    $("#setStatus").textContent = "保存しました。";
+    // 文字の大きさは、プレビューを読み込み直して反映する（返事の長さは、次の返事から変わる）
+    if (key === "font") $("#detFrame").src = "/a/" + current.slug + "?v=" + current.current_version + "&f=" + settings.font;
+  } catch (e) { setErr($("#setStatus"), "保存できませんでした：" + e.message); }
+}
+$$("#setFont button").forEach((b) => (b.onclick = () => saveSetting("font", b.dataset.v)));
+$$("#setLength button").forEach((b) => (b.onclick = () => saveSetting("length", b.dataset.v)));
+$("#detSettings").onclick = () => { if (!current) return; paintSettings(); $("#setStatus").textContent = ""; $("#settingsModal").classList.add("on"); };
+$("#setClose").onclick = () => $("#settingsModal").classList.remove("on");
+$("#settingsModal").addEventListener("click", (e) => { if (e.target === $("#settingsModal") && !$("#reviseBtn").disabled) $("#settingsModal").classList.remove("on"); });
+
+/* ---------------- 学習分析ダッシュボード ---------------- */
+const SELF_NAME = { known: "分かった", unsure: "あいまい", unknown: "分からない" };
+function selfDot(v) { return v ? '<i class="dot ' + v + '" title="' + SELF_NAME[v] + '"></i>' + SELF_NAME[v] : '<span class="na">–</span>'; }
+function checkLabel(c, kind) {
+  if (kind === "apply") return { cls: "na", text: "確認問題なし（自分で考える）" };
+  if (!c || !c.graded) return { cls: "na", text: "確認問題：まだ" };
+  if (c.passed) return c.attempts_to_pass === 1 ? { cls: "good", text: "確認問題：1回で合格" } : { cls: "mid", text: "確認問題：" + c.attempts_to_pass + "回目で合格" };
+  return { cls: "low", text: "確認問題：挑戦中（" + c.graded + "回）" };
+}
+async function loadDash() {
+  if (!current) return;
+  const id = current.id;
+  let d;
+  try { d = await api("/api/apps/" + id + "/dashboard"); }
+  catch (e) { setErr($("#dashStatus"), "学習の記録を取得できませんでした：" + e.message); return; }
+  if (!current || current.id !== id) return;
+  $("#dashStatus").textContent = "";
+
+  let steps = [];
+  try { steps = deriveSteps(current.flow); } catch (e) {}
+  const prog = d.progress, byNo = {}, checks = {};
+  if (prog) prog.steps.forEach((s) => (byNo[s.no] = s));
+  d.checks.forEach((c) => (checks[c.step] = c));
+  const total = steps.length || (prog ? prog.steps.length : 0);
+
+  // 進み具合
+  if (prog) {
+    const done = prog.steps.filter((s) => s.status === "done").length;
+    $("#dashDone").textContent = done + " / " + total;
+    $("#dashDoneNote").textContent = "ステップ完了";
+    $("#dashBar").style.width = (total ? Math.round(done / total * 100) : 0) + "%";
+    const cur = steps.find((s) => s.no === prog.current);
+    $("#dashNow").textContent = done >= total && total ? "すべてのステップを完了しました。" : prog.current ? "いま：ステップ" + prog.current + (cur ? "　" + cur.title : "") : "";
+  } else {
+    $("#dashDone").textContent = "–"; $("#dashDoneNote").textContent = ""; $("#dashBar").style.width = "0%";
+    $("#dashNow").textContent = d.usage.runs
+      ? "このアプリは、進み具合を記録する形になっていません。「アプリ設定」→「詳細」→「更新する」で対応します。"
+      : "まだ学習を始めていません。左のアプリで学習を始めると、ここに記録が出ます。";
+  }
+
+  // ステップごと
+  const ol = $("#dashSteps"); ol.innerHTML = "";
+  const rows = steps.length ? steps : (prog ? prog.steps.map((s) => ({ no: s.no, title: "ステップ" + s.no, kind: "read" })) : []);
+  for (const s of rows) {
+    const p = byNo[s.no] || { status: "todo", self: null };
+    const before = s.kind === "read" && s.sections && s.sections[0] && current.goal && current.goal.chapters ? current.goal.chapters[chapterNumOf(s.sections[0].id)] : null;
+    const ck = checkLabel(checks[s.no], s.kind);
+    const stName = { done: "完了", doing: "学習中", todo: "まだ" }[p.status];
+    const li = document.createElement("li"); li.className = "st-" + p.status;
+    li.innerHTML = '<div class="sh"><span class="no"></span><span class="tt"></span><span class="badge ' + p.status + '">' + stName + "</span></div>"
+      + (s.kind === "apply" ? "" : '<div class="sr"><span>学習前 ' + selfDot(before) + '</span><span class="arrow">→</span><span>学習後 ' + selfDot(p.self) + "</span></div>")
+      + '<div class="sr"><span class="ck ' + ck.cls + '">' + ck.text + "</span></div>";
+    li.querySelector(".no").textContent = s.no;
+    li.querySelector(".tt").textContent = s.title;
+    ol.appendChild(li);
+  }
+  if (!rows.length) ol.innerHTML = '<li class="na">ステップの記録はまだありません。</li>';
+
+  // 利用の記録
+  const u = d.usage;
+  $("#dashUsage").innerHTML = '<div><b>' + u.runs + '</b><span>やりとり（回）</span></div><div><b>' + u.days + '</b><span>学習した日数</span></div><div><b class="sm"></b><span>最後に使った日時</span></div>';
+  $("#dashUsage .sm").textContent = u.last_at ? fmtTime(u.last_at) : "–";
+}
+$("#dashReload").onclick = loadDash;
+// アプリのタブを開いている間は、30秒ごとに最新にする
+setInterval(() => { if (current && $("#tab-app").classList.contains("on") && !document.hidden) loadDash(); }, 30000);
 
 $("#detDelete").onclick = async () => {
   if (!current) return;
   if (!confirm("「" + current.title + "」を削除します。すべての版も消え、元に戻せません。よろしいですか？")) return;
-  try { await api("/api/apps/" + current.id, undefined, "DELETE"); current = null; loadLibrary(); }
+  try { await api("/api/apps/" + current.id, undefined, "DELETE"); closeApp(); showTab("library"); }
   catch (e) { alert("削除できませんでした：" + e.message); }
 };
-$("#libBack").onclick = () => { current = null; $("#detFrame").src = "about:blank"; loadLibrary(); };
+$("#libBack").onclick = () => showTab("library");
+$("#appClose").onclick = () => { closeApp(); showTab("library"); };
 $$(".tabs button").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
 
 /* ---------------- ログアウト ---------------- */
@@ -617,8 +774,8 @@ async function boot() {
   setStage(Math.min(S.stage || 1, maxStage()));
   let tab = "make", openId = "";
   try { tab = sessionStorage.getItem(TAB_KEY) || "make"; openId = sessionStorage.getItem(OPEN_KEY) || ""; } catch (e) {}
-  if (tab === "library" && openId) openApp(openId);
-  else showTab($("#tab-" + tab) ? tab : "make");
+  if (openId) openApp(openId, tab === "app");
+  if (!(openId && tab === "app")) showTab(tab !== "app" && $("#tab-" + tab) ? tab : "make");
 }
 boot();
 })();

@@ -31,7 +31,7 @@ JSON だけを返す（説明文やコードフェンスは付けない）。`;
 export function reviseUserPrompt({ current, instruction }) {
   return [
     "## 学習者の指示",
-    instruction,
+    instruction || "（指示はありません。画面の構成・学習ステップ・system_prompt の内容は変えずに、下の決まりをすべて満たすように更新してください）",
     "",
     "## 現在の版：title",
     current.title,
